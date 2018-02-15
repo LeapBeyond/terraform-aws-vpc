@@ -9,6 +9,7 @@
 *.tfstate
 .DS_Store
 .terraform
+terraform.tfvars
 bootstrap-scripts/env.rc
 data/*.pem
 data/*key
