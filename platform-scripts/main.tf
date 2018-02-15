@@ -187,3 +187,113 @@ resource "aws_security_group" "protected_ssh_access" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 }
+
+# --------------------------------------------------------------------------------------------------------------
+# EC2 instances
+# --------------------------------------------------------------------------------------------------------------
+data "aws_ami" "target_ami" {
+  most_recent = true
+
+  filter {
+    name   = "owner-alias"
+    values = ["amazon"]
+  }
+
+  filter {
+    name   = "name"
+    values = ["${var.ami_name}"]
+  }
+}
+
+resource "aws_instance" "bastion" {
+  ami                    = "${data.aws_ami.target_ami.id}"
+  instance_type          = "${var.instance_type}"
+  key_name               = "${var.bastion_key}"
+  subnet_id              = "${aws_subnet.bastion.id}"
+  vpc_security_group_ids = ["${aws_security_group.bastion_ssh_access.id}"]
+
+  root_block_device = {
+    volume_type = "gp2"
+    volume_size = "${var.root_vol_size}"
+  }
+
+  tags {
+    Name    = "Scenario2-bastion"
+    Project = "${var.tags["project"]}"
+    Owner   = "${var.tags["owner"]}"
+    Client  = "${var.tags["client"]}"
+  }
+
+  volume_tags {
+    Project = "${var.tags["project"]}"
+    Owner   = "${var.tags["owner"]}"
+    Client  = "${var.tags["client"]}"
+  }
+
+  user_data = <<EOF
+#!/bin/bash
+yum update -y -q
+yum erase -y -q ntp*
+yum -y -q install chrony git
+service chronyd start
+EOF
+
+  provisioner "file" {
+    source      = "${path.root}/../data/${var.protected_key}.pem"
+    destination = "/home/${var.bastion_user}/.ssh/${var.protected_key}.pem"
+
+    connection {
+      type        = "ssh"
+      user        = "${var.bastion_user}"
+      private_key = "${file("${path.root}/../data/${var.bastion_key}.pem")}"
+      timeout     = "5m"
+    }
+  }
+
+  provisioner "remote-exec" {
+    inline = [
+      "chmod 0400 /home/${var.bastion_user}/.ssh/*.pem",
+    ]
+
+    connection {
+      type        = "ssh"
+      user        = "${var.bastion_user}"
+      private_key = "${file("${path.root}/../data/${var.bastion_key}.pem")}"
+    }
+  }
+}
+
+resource "aws_instance" "protected" {
+  associate_public_ip_address = false
+  ami                         = "${data.aws_ami.target_ami.id}"
+  instance_type               = "${var.instance_type}"
+  key_name                    = "${var.protected_key}"
+  vpc_security_group_ids      = ["${aws_security_group.protected_ssh_access.id}"]
+  subnet_id                   = "${aws_subnet.protected.id}"
+
+  root_block_device = {
+    volume_type = "gp2"
+    volume_size = "${var.root_vol_size}"
+  }
+
+  tags {
+    Name    = "Scenario2-protected"
+    Project = "${var.tags["project"]}"
+    Owner   = "${var.tags["owner"]}"
+    Client  = "${var.tags["client"]}"
+  }
+
+  volume_tags {
+    Project = "${var.tags["project"]}"
+    Owner   = "${var.tags["owner"]}"
+    Client  = "${var.tags["client"]}"
+  }
+
+  user_data = <<EOF
+#!/bin/bash
+yum update -y -q
+yum erase -y -q ntp*
+yum -y -q install chrony git
+service chronyd start
+EOF
+}
