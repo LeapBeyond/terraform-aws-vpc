@@ -21,8 +21,10 @@ then execute the `bootstrap/bootstrap.sh`. If all goes well, you should wind up 
 files in the `data` directory, and some new key pairs in the AWS account. You should also
 verify that the S3 bucket and DynamoDB table got created.
 
-Next, from within the `platform-scripts` directory, create the `terraform.tfvars` from the template
-and the do a `terraform init` (if you have not already) followed by `terraform apply`.
+Next, from within the `platform-scripts` directory, create the `terraform.tfvars` from the template, and
+update the `backend.tf` from the values setup by the bootstrap operation. (Annoyingly the Terraform backend
+  does not support interpolation, so we need to copy the values manually from place to place.)
+Finally do a `terraform init` (if you have not already) followed by `terraform apply`.
 
 After a certain amount of grinding, you should see some output from the scripts, e.g.:
 
