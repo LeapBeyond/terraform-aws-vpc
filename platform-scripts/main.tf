@@ -20,6 +20,18 @@ resource "aws_vpc" "test_vpc" {
   }
 }
 
+# seal off the default NACL
+resource "aws_default_network_acl" "test_default" {
+  default_network_acl_id = "${aws_vpc.test_vpc.default_network_acl_id}"
+
+  tags {
+    Name    = "Scenario2-default"
+    Project = "${var.tags["project"]}"
+    Owner   = "${var.tags["owner"]}"
+    Client  = "${var.tags["client"]}"
+  }
+}
+
 # seal off the default security group
 resource "aws_default_security_group" "test_default" {
   vpc_id = "${aws_vpc.test_vpc.id}"
@@ -71,6 +83,164 @@ resource "aws_subnet" "protected" {
     Owner   = "${var.tags["owner"]}"
     Client  = "${var.tags["client"]}"
   }
+}
+
+resource "aws_network_acl" "bastion" {
+  vpc_id     = "${aws_vpc.test_vpc.id}"
+  subnet_ids = ["${aws_subnet.bastion.id}"]
+
+  tags {
+    Name    = "Scenario2-bastion-nacl"
+    Project = "${var.tags["project"]}"
+    Owner   = "${var.tags["owner"]}"
+    Client  = "${var.tags["client"]}"
+  }
+}
+
+# accept SSH requets
+resource "aws_network_acl_rule" "bastion_ssh_in" {
+  count          = "${length(var.ssh_inbound)}"
+  network_acl_id = "${aws_network_acl.bastion.id}"
+  rule_number    = "${100 + count.index}"
+  egress         = false
+  protocol       = "tcp"
+  rule_action    = "allow"
+  cidr_block     = "${var.ssh_inbound[count.index]}"
+  from_port      = 22
+  to_port        = 22
+}
+
+# accept responses to YUM requets
+resource "aws_network_acl_rule" "bastion_ephemeral_in" {
+  network_acl_id = "${aws_network_acl.bastion.id}"
+  rule_number    = 200
+  egress         = false
+  protocol       = "tcp"
+  rule_action    = "allow"
+  cidr_block     = "0.0.0.0/0"
+  from_port      = 1024
+  to_port        = 65535
+}
+
+# HTTP from protected goes via the NAT gateway
+resource "aws_network_acl_rule" "bastion_http_from_protected" {
+  network_acl_id = "${aws_network_acl.bastion.id}"
+  rule_number    = 220
+  egress         = false
+  protocol       = "tcp"
+  rule_action    = "allow"
+  cidr_block     = "${var.protected_subnet_cidr}"
+  from_port      = 80
+  to_port        = 80
+}
+
+# allow responses to SSH requests
+resource "aws_network_acl_rule" "bastion_ephemeral_out" {
+  count          = "${length(var.ssh_inbound)}"
+  network_acl_id = "${aws_network_acl.bastion.id}"
+  rule_number    = "${100 + count.index}"
+  egress         = true
+  protocol       = "tcp"
+  rule_action    = "allow"
+  cidr_block     = "${var.ssh_inbound[count.index]}"
+  from_port      = 1024
+  to_port        = 65535
+}
+
+# allow YUM requests
+resource "aws_network_acl_rule" "bastion_http_out" {
+  network_acl_id = "${aws_network_acl.bastion.id}"
+  rule_number    = 200
+  egress         = true
+  protocol       = "tcp"
+  rule_action    = "allow"
+  cidr_block     = "0.0.0.0/0"
+  from_port      = 80
+  to_port        = 80
+}
+
+# allow SSH to protected
+resource "aws_network_acl_rule" "bastion_ssh_out" {
+  network_acl_id = "${aws_network_acl.bastion.id}"
+  rule_number    = 220
+  egress         = true
+  protocol       = "tcp"
+  rule_action    = "allow"
+  cidr_block     = "${var.protected_subnet_cidr}"
+  from_port      = 22
+  to_port        = 22
+}
+
+# respond to HTTP from protected
+resource "aws_network_acl_rule" "bastion_ephemeral_to_protected" {
+  network_acl_id = "${aws_network_acl.bastion.id}"
+  rule_number    = 240
+  egress         = true
+  protocol       = "tcp"
+  rule_action    = "allow"
+  cidr_block     = "${var.protected_subnet_cidr}"
+  from_port      = 1024
+  to_port        = 65535
+}
+
+resource "aws_network_acl" "protected" {
+  vpc_id     = "${aws_vpc.test_vpc.id}"
+  subnet_ids = ["${aws_subnet.protected.id}"]
+
+  tags {
+    Name    = "Scenario2-protected-nacl"
+    Project = "${var.tags["project"]}"
+    Owner   = "${var.tags["owner"]}"
+    Client  = "${var.tags["client"]}"
+  }
+}
+
+# accept SSH requests
+resource "aws_network_acl_rule" "protected_ssh_in" {
+  network_acl_id = "${aws_network_acl.protected.id}"
+  rule_number    = 100
+  egress         = false
+  protocol       = "tcp"
+  rule_action    = "allow"
+  cidr_block     = "${var.bastion_subnet_cidr}"
+  from_port      = 22
+  to_port        = 22
+}
+
+# accept responses from YUM requests
+resource "aws_network_acl_rule" "protected_ephemeral_in" {
+  network_acl_id = "${aws_network_acl.protected.id}"
+  rule_number    = 200
+  egress         = false
+  protocol       = "tcp"
+  rule_action    = "allow"
+  cidr_block     = "0.0.0.0/0"
+  from_port      = 1024
+  to_port        = 65535
+}
+
+# allow responses to SSH requests
+resource "aws_network_acl_rule" "protected_ephemeral_out" {
+  network_acl_id = "${aws_network_acl.protected.id}"
+  rule_number    = 100
+  egress         = true
+  protocol       = "tcp"
+  rule_action    = "allow"
+  cidr_block     = "${var.bastion_subnet_cidr}"
+  from_port      = 1024
+  to_port        = 65535
+}
+
+# allow YUM requests
+resource "aws_network_acl_rule" "protected_http_out" {
+  network_acl_id = "${aws_network_acl.protected.id}"
+  rule_number    = 200
+  egress         = true
+  protocol       = "tcp"
+  rule_action    = "allow"
+  cidr_block     = "0.0.0.0/0"
+  from_port      = 80
+  to_port        = 80
 }
 
 # --------------------------------------------------------------------------------------------------------------

@@ -47,6 +47,13 @@ ec2-user@ip-172-21-20-45 ~]$
 And there you have it! A host in a subnet which can reach the internet, but not be accessed from outside, and both hosts
 protected by a NAT gateway.
 
+### A Note on NACL
+The best way of thinking of the NACL is as a stateless firewall "in front of" the subnet to which they are attached. This can lead to
+some surprising requirements. The two in particular that should be noted here are:
+ - we need to allow port 22 out from the bastion to the protected subnet (and the ephemeral range in the opposite direction) so
+   that we can SSH from the bastion to the protected subnet;
+ - we need to allow port 80 from the protected subnet (and ephemeral in the opposite direction), so that outgoing HTTP requests from
+   the protected subnet can be routed through the bastion subnet.
 
 ## Cleanup
 To cleanup, execute `terraform destroy` from within the `platform-scripts` directory, and then from within the `bootstrap-scripts/terraform`

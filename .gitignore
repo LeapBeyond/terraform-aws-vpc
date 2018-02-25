@@ -6,6 +6,7 @@
 .terraform/
 
 *.tfstate.backup
+*.tfstate.*.backup
 *.tfstate
 .DS_Store
 .terraform
