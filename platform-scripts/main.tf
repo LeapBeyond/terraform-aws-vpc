@@ -331,9 +331,35 @@ resource "aws_security_group" "bastion_ssh_access" {
   }
 
   egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
+    from_port   = 1024
+    to_port     = 65535
+    protocol    = "tcp"
+    cidr_blocks = ["${var.ssh_inbound}"]
+  }
+}
+
+resource "aws_security_group" "ssh_out_access" {
+  name        = "Scenario2-ssh-out"
+  description = "allows ssh access out"
+  vpc_id      = "${aws_vpc.test_vpc.id}"
+
+  egress {
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = ["${var.test_vpc_cidr}"]
+  }
+}
+
+resource "aws_security_group" "http_out_access" {
+  name        = "Scenario2-http-out"
+  description = "allows instance to reach out on port 80"
+  vpc_id      = "${aws_vpc.test_vpc.id}"
+
+  egress {
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }
 }
@@ -351,10 +377,10 @@ resource "aws_security_group" "protected_ssh_access" {
   }
 
   egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
+    from_port   = 1024
+    to_port     = 65535
+    protocol    = "tcp"
+    cidr_blocks = ["${var.bastion_subnet_cidr}"]
   }
 }
 
@@ -376,11 +402,16 @@ data "aws_ami" "target_ami" {
 }
 
 resource "aws_instance" "bastion" {
-  ami                    = "${data.aws_ami.target_ami.id}"
-  instance_type          = "${var.instance_type}"
-  key_name               = "${var.bastion_key}"
-  subnet_id              = "${aws_subnet.bastion.id}"
-  vpc_security_group_ids = ["${aws_security_group.bastion_ssh_access.id}"]
+  ami           = "${data.aws_ami.target_ami.id}"
+  instance_type = "${var.instance_type}"
+  key_name      = "${var.bastion_key}"
+  subnet_id     = "${aws_subnet.bastion.id}"
+
+  vpc_security_group_ids = [
+    "${aws_security_group.bastion_ssh_access.id}",
+    "${aws_security_group.http_out_access.id}",
+    "${aws_security_group.ssh_out_access.id}",
+  ]
 
   root_block_device = {
     volume_type = "gp2"
@@ -438,8 +469,13 @@ resource "aws_instance" "protected" {
   ami                         = "${data.aws_ami.target_ami.id}"
   instance_type               = "${var.instance_type}"
   key_name                    = "${var.protected_key}"
-  vpc_security_group_ids      = ["${aws_security_group.protected_ssh_access.id}"]
-  subnet_id                   = "${aws_subnet.protected.id}"
+
+  vpc_security_group_ids = [
+    "${aws_security_group.protected_ssh_access.id}",
+    "${aws_security_group.http_out_access.id}",
+  ]
+
+  subnet_id = "${aws_subnet.protected.id}"
 
   root_block_device = {
     volume_type = "gp2"
