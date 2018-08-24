@@ -7,7 +7,7 @@ output "bucket_arn" {
 }
 
 output "table_name" {
-  value = "${aws_dynamodb_table.dynamodb-terraform-state-lock.i}"
+  value = "${aws_dynamodb_table.dynamodb-terraform-state-lock.id}"
 }
 
 output "table_arn" {
